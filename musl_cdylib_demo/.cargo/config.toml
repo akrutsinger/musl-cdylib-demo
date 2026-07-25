@@ -13,5 +13,6 @@ rustflags = [
     "-C", "target-feature=-crt-static",  # cdylib is unsupported on this target when fully static
     "-Z", "unstable-options",
     "-C", "panic=immediate-abort",       # removes the unwinder, and with it the libgcc_s dependency
+    "-C", "force-unwind-tables=no",      # nothing unwinds because of immediate-abort, so .eh_frame is ~2.8K of dead tables
     "-L", "native=linker-shim",          # see linker-shim/libgcc_s.so; path is relative to the cargo invocation dir
 ]
