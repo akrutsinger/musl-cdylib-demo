@@ -1,0 +1,6 @@
+# build-std and -Cpanic=immediate-abort are nightly-only, and build-std needs
+# rust-src to compile the standard library from source.
+[toolchain]
+channel = "nightly"
+components = ["rust-src"]
+targets = ["x86_64-unknown-linux-musl"]

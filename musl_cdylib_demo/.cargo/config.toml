@@ -1,0 +1,17 @@
+# Rebuild std from source so panic=immediate-abort can strip the unwinder.
+# Without this the .so carries versioned _Unwind_*@GCC_* references that only
+# the glibc-linked libgcc_s.so.1 can satisfy, and the musl loader can't load it.
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[build]
+target = "x86_64-unknown-linux-musl"
+
+[target.x86_64-unknown-linux-musl]
+linker = "musl-gcc"
+rustflags = [
+    "-C", "target-feature=-crt-static",  # cdylib is unsupported on this target when fully static
+    "-Z", "unstable-options",
+    "-C", "panic=immediate-abort",       # removes the unwinder, and with it the libgcc_s dependency
+    "-L", "native=linker-shim",          # see linker-shim/libgcc_s.so; path is relative to the cargo invocation dir
+]
