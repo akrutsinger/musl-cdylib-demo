@@ -1,5 +1,5 @@
 // Compile with:
-//   musl-gcc -o host main.c -ldl
+//   musl-gcc -o host main.c
 #include <stdio.h>
 #include <dlfcn.h>
 

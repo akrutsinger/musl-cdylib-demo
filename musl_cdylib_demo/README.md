@@ -21,16 +21,14 @@ cdylib loaded, calling into musl...
 read from /etc/hostname: xps
 ```
 
-Build through `make`; one linker flag uses a path relative to the project root.
-
 ## Check it
 
 ```sh
 readelf -d target/x86_64-unknown-linux-musl/debug/libmusl_cdylib_demo.so | grep NEEDED
 ```
 
-One line, `ld-musl-x86_64.so.1`. The libc functions stay `UND` and resolve at `dlopen()`. The host
-passes `RTLD_NOW`, so a missing symbol fails there instead of crashing later.
+One line, `ld-musl-x86_64.so.1`. The libc functions stay `UND` and resolve at `dlopen()`. The link
+uses `-z defs`, so a symbol musl doesn't define fails the build instead of the load.
 
 ## Why nightly
 
@@ -54,33 +52,41 @@ So remove the panic machinery entirely: `build-std` plus `-Cpanic=immediate-abor
 with panics as a trap. No `_Unwind_*` references survive. Both need nightly.
 
 Cost: a panic is now `SIGILL` with no message. `.unwrap()` failures crash silently. Keeping the
-message costs about 70 KB, `panic=abort`, `libgcc_eh.a` added to the shim's `GROUP` to satisfy the
-two backtrace symbols statically, a stub `_dl_find_object` returning `-1` because that archive
+message costs about 70 KB, `panic=abort`, `libgcc_eh.a` linked statically to satisfy the two
+backtrace symbols, a stub `_dl_find_object` returning `-1` because that archive
 member wants a glibc 2.35 symbol, and `-Zbuild-std-features=` to drop the `gimli`/`addr2line`
 symbolization that would otherwise add 200 KB more to produce an always-empty backtrace. Three extra
 moving parts for a code path that shouldn't run.
 
-## The Fedora shim
+## Dropping libgcc_s
 
 With the unwinder gone, `libgcc_s.so.1` *still* showed up in `NEEDED`.
 
-`rustc` always passes `-lgcc_s` for a non-static `cdylib`. On Fedora that resolves to an ld script:
+std's `unwind` crate carries `#[link(name = "gcc_s")]` for musl whenever `crt-static` is off, so
+rustc passes `-lgcc_s` regardless of whether anything uses it. On Fedora that resolves to an ld
+script:
 
 ```
 GROUP ( /lib64/libgcc_s.so.1 libgcc.a )
 ```
 
-`GROUP` members ignore `--as-needed` or other link time optimization, so ld records the dependency
-even though nothing references a symbol from it. `--gc-sections` doesn't help either.
+and ld records the dependency even though nothing references a symbol from it.
 
-`linker-shim/libgcc_s.so` is an ld script that pulls in only `libgcc.a`, and `-L native=linker-shim`
-in `.cargo/config.toml` makes `-lgcc_s` find it first. Archive members load only when referenced, so
-it contributes nothing.
+`-Z link-native-libraries=no` makes rustc ignore every crate's `#[link]` and `rustc-link-lib`
+dynamic libraries, which removes `-lgcc_s` along with the `libc` crate's `-lc`. `-C link-arg=-lc`
+puts musl back, so it's the only library on the link line.
 
-## Other distros
+## Dependencies
 
-Fedora packaging quirk. Where `libgcc_s.so` is a plain symlink, the `--as-needed` rustc already
-passes should drop it and the shim is dead weight.
+The same flags keep any crate you add musl-only:
 
-Check `NEEDED` first. If musl is alone, delete the `-L native=linker-shim` line. If not, `file`
-whatever `-lgcc_s` resolves to; it may be another ld script.
+- Pure Rust crates go through `std`/`libc` and resolve to musl.
+- Crates that build and bundle their own C as a static archive (`rustc-link-lib=static=...`, most
+  `-sys` crates' `vendored`/`bundled`/`static` features) still link in. Their code lands inside the
+  `.so`. Compile that C with `musl-gcc`, not glibc's `gcc`.
+- Crates that want a system shared library (`#[link(name = "z")]`) have that library dropped, and
+  `-z defs` turns the leftover undefined symbols into a link error:
+
+```
+undefined reference to `zlibVersion'
+```

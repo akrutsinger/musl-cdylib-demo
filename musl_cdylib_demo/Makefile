@@ -1,21 +1,19 @@
 C_FLAGS := -Wall -Wextra -Wpedantic -std=c11
+OUT := target/x86_64-unknown-linux-musl
 
+# Phony so cargo always runs; it decides itself whether the .so is stale.
 .PHONY: all release run clean
 
-all: target/x86_64-unknown-linux-musl/debug/host
+all:
+	cargo build
+	musl-gcc $(C_FLAGS) host/main.c -o $(OUT)/debug/host
 
-release: target/x86_64-unknown-linux-musl/release/host
-
-target/x86_64-unknown-linux-musl/debug/host: host/main.c
-	cargo build --target x86_64-unknown-linux-musl
-	musl-gcc $(C_FLAGS) host/main.c -o $@ -ldl
-
-target/x86_64-unknown-linux-musl/release/host: host/main.c
-	cargo build --target x86_64-unknown-linux-musl --release
-	musl-gcc $(C_FLAGS) host/main.c -o $@ -ldl
+release:
+	cargo build --release
+	musl-gcc $(C_FLAGS) host/main.c -o $(OUT)/release/host
 
 run: all
-	cd target/x86_64-unknown-linux-musl/debug && ./host
+	cd $(OUT)/debug && ./host
 
 clean:
 	cargo clean

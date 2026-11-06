@@ -12,7 +12,9 @@ linker = "musl-gcc"
 rustflags = [
     "-C", "target-feature=-crt-static",  # cdylib is unsupported on this target when fully static
     "-Z", "unstable-options",
-    "-C", "panic=immediate-abort",       # removes the unwinder, and with it the libgcc_s dependency
+    "-C", "panic=immediate-abort",       # removes the unwinder, so no _Unwind_* references remain
     "-C", "force-unwind-tables=no",      # nothing unwinds because of immediate-abort, so .eh_frame is ~2.8K of dead tables
-    "-L", "native=linker-shim",          # see linker-shim/libgcc_s.so; path is relative to the cargo invocation dir
+    "-Z", "link-native-libraries=no",    # ignore every crate's #[link]/rustc-link-lib, incl. std's unconditional -lgcc_s
+    "-C", "link-arg=-lc",                # musl is the only library on the link line
+    "-C", "link-arg=-Wl,-z,defs",        # anything musl doesn't define is a link error, not a dlopen() failure
 ]
